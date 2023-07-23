@@ -95,13 +95,17 @@ public class PosterService implements Runnable {
                     if (e.getCode() == 401 || e.getCode() == 403) {
                         userActor = authorizer.getUserActor(vk);
                     }
-                    System.out.println("Error while sending post to group " + group + ": " + e.getMessage());
+                    System.out.println("Error while sending post to group " + group + ": " + e);
 
                     retries++;
                 } catch (ClientException e) {
-                    System.out.println("Error while sending post to group " + group + ": " + e.getMessage());
+                    System.out.println("Error while sending post to group " + group + ": " + e);
 
                     retries++;
+                } catch (NumberFormatException e) {
+                    System.out.println("Incorrect group number: " + group);
+
+                    break;
                 }
             }
 
