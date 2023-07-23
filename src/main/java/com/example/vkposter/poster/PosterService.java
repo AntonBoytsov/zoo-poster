@@ -3,8 +3,7 @@ package com.example.vkposter.poster;
 import com.example.vkposter.auth.Authorizer;
 import com.vk.api.sdk.client.VkApiClient;
 import com.vk.api.sdk.client.actors.UserActor;
-import com.vk.api.sdk.exceptions.ApiException;
-import com.vk.api.sdk.exceptions.ClientException;
+import com.vk.api.sdk.exceptions.*;
 import com.vk.api.sdk.httpclient.HttpTransportClient;
 import com.vk.api.sdk.objects.wall.responses.PostResponse;
 import org.apache.logging.log4j.util.Strings;
@@ -78,28 +77,46 @@ public class PosterService implements Runnable {
     }
 
     private void postToGroups(UserActor userActor, PostData post, List<String> groups) {
+        final int MAX_RETRIES = 3;
+
         System.out.println("Starting sending post " + post.postName() + " to all groups...");
 
         List<String> skippedGroups = new ArrayList<>();
 
         for (String group : groups) {
-
             int retries = 0;
             boolean ok = false;
 
-            while (!ok && retries < 3) {
+            while (!ok && retries < MAX_RETRIES) {
                 try {
                     doPost(userActor, post, Integer.parseInt(group));
                     ok = true;
-                } catch (ApiException e) {
-                    if (e.getCode() == 401 || e.getCode() == 403) {
-                        userActor = authorizer.getUserActor(vk);
+                } catch (ApiAuthException | ApiAccessException | ApiPermissionException | ApiCaptchaException e) {
+                    System.out.println("Access denied error while sending post to group " + group + ": " + e.getDescription());
+                    userActor = authorizer.getUserActor(vk);
+
+                    retries++;
+                } catch (ApiWallTooManyRecipientsException e) {
+                    System.out.println("Too many requests error while sending post to group " + group + ": " + e.getDescription());
+                    System.out.println("Sleeping for 10 minutes...");
+
+                    try {
+                        TimeUnit.MINUTES.sleep(10);
+                    } catch (InterruptedException ie) {
+                        throw new RuntimeException(ie);
                     }
-                    System.out.println("Error while sending post to group " + group + ": " + e);
+
+                    retries++;
+
+                    if (retries == MAX_RETRIES) {
+                        throw new RuntimeException("Too many recipients error repeating several times, stopping the processing.");
+                    }
+                } catch (ApiException e) {
+                    System.out.println("API exception while sending post to group " + group + ": " + e.getDescription());
 
                     retries++;
                 } catch (ClientException e) {
-                    System.out.println("Error while sending post to group " + group + ": " + e);
+                    System.out.println("Client exception while sending post to group " + group + ": " + e.getLocalizedMessage());
 
                     retries++;
                 } catch (NumberFormatException e) {
@@ -107,17 +124,17 @@ public class PosterService implements Runnable {
 
                     break;
                 }
+
+                try {
+                    TimeUnit.SECONDS.sleep(20);
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
             }
 
             if (!ok) {
-                System.out.println("Cannot send post to group " + group + "after " + retries + " retries, skipping.");
+                System.out.println("Cannot send post to group " + group + ", skipping.");
                 skippedGroups.add(group);
-            }
-
-            try {
-                TimeUnit.SECONDS.sleep(1);
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
             }
         }
 
