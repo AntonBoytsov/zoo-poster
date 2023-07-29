@@ -19,7 +19,7 @@ import java.util.stream.Collectors;
 @Component
 public class PosterService implements Runnable {
     @Autowired
-    private ZooConfig zooConfig;
+    private ZooGroupsService zooGroupsService;
 
     @Autowired
     private Authorizer authorizer;
@@ -30,11 +30,11 @@ public class PosterService implements Runnable {
     public void run() {
         UserActor actor = authorizer.getUserActor(vk);
 
-        List<String> postsToSend = zooConfig.getPostsToSend();
+        List<String> postsToSend = zooGroupsService.getPostsToSend();
 
         for (String p : postsToSend) {
             PostData postData = preparePostData(actor, p);
-            postToGroups(actor, postData, zooConfig.getGroupsToUse());
+            postToGroups(actor, postData, zooGroupsService.getGroupsToUse());
         }
     }
 
@@ -82,66 +82,82 @@ public class PosterService implements Runnable {
         System.out.println("Starting sending post " + post.postName() + " to all groups...");
 
         List<String> skippedGroups = new ArrayList<>();
+        int currentIndex = -1;
 
-        for (String group : groups) {
-            int retries = 0;
-            boolean ok = false;
+        try {
+            for (String group : groups) {
+                currentIndex++;
 
-            while (!ok && retries < MAX_RETRIES) {
-                try {
-                    doPost(userActor, post, Integer.parseInt(group));
-                    ok = true;
-                } catch (ApiAuthException | ApiAccessException | ApiPermissionException | ApiCaptchaException e) {
-                    System.out.println("Access denied error while sending post to group " + group + ": " + e.getDescription());
-                    userActor = authorizer.getUserActor(vk);
+                int retries = 0;
+                boolean ok = false;
 
-                    retries++;
-                } catch (ApiWallTooManyRecipientsException e) {
-                    System.out.println("Too many requests error while sending post to group " + group + ": " + e.getDescription());
-                    System.out.println("Sleeping for 10 minutes...");
+                while (!ok && retries < MAX_RETRIES) {
+                    try {
+                        doPost(userActor, post, Integer.parseInt(group));
+                        ok = true;
+                    } catch (ApiAuthException | ApiAccessException | ApiPermissionException | ApiCaptchaException e) {
+                        System.out.println("Access denied error while sending post to group " + group + ": " + e.getDescription());
+                        userActor = authorizer.getUserActor(vk);
+
+                        retries++;
+                    } catch (ApiWallTooManyRecipientsException e) {
+                        System.out.println("Too many requests error while sending post to group " + group + ": " + e.getDescription());
+                        System.out.println("Sleeping for 10 minutes...");
+
+                        try {
+                            TimeUnit.MINUTES.sleep(10);
+                        } catch (InterruptedException ie) {
+                            throw new RuntimeException(ie);
+                        }
+
+                        retries++;
+
+                        if (retries == MAX_RETRIES) {
+                            throw new RuntimeException("Too many recipients error repeating several times, stopping the processing.");
+                        }
+                    } catch (ApiException e) {
+                        System.out.println("API exception while sending post to group " + group + ": " + e.getDescription());
+
+                        retries++;
+                    } catch (ClientException e) {
+                        System.out.println("Client exception while sending post to group " + group + ": " + e.getLocalizedMessage());
+
+                        retries++;
+                    } catch (NumberFormatException e) {
+                        System.out.println("Incorrect group number: " + group);
+
+                        break;
+                    }
 
                     try {
-                        TimeUnit.MINUTES.sleep(10);
-                    } catch (InterruptedException ie) {
-                        throw new RuntimeException(ie);
+                        TimeUnit.SECONDS.sleep(20);
+                    } catch (InterruptedException e) {
+                        throw new RuntimeException(e);
                     }
-
-                    retries++;
-
-                    if (retries == MAX_RETRIES) {
-                        throw new RuntimeException("Too many recipients error repeating several times, stopping the processing.");
-                    }
-                } catch (ApiException e) {
-                    System.out.println("API exception while sending post to group " + group + ": " + e.getDescription());
-
-                    retries++;
-                } catch (ClientException e) {
-                    System.out.println("Client exception while sending post to group " + group + ": " + e.getLocalizedMessage());
-
-                    retries++;
-                } catch (NumberFormatException e) {
-                    System.out.println("Incorrect group number: " + group);
-
-                    break;
                 }
 
-                try {
-                    TimeUnit.SECONDS.sleep(20);
-                } catch (InterruptedException e) {
-                    throw new RuntimeException(e);
+                if (!ok) {
+                    System.out.println("Cannot send post to group " + group + ", skipping.");
+                    skippedGroups.add(group);
                 }
             }
 
-            if (!ok) {
-                System.out.println("Cannot send post to group " + group + ", skipping.");
-                skippedGroups.add(group);
+            currentIndex++;
+
+            System.out.println("Finished sending post " + post.postName() + " to all groups.");
+
+            if (!skippedGroups.isEmpty()) {
+                System.out.println("Skipped groups: " + String.join(",", skippedGroups));
             }
-        }
+        } finally {
+            if (!skippedGroups.isEmpty()) {
+                zooGroupsService.writeSkippedGroups(skippedGroups);
+            }
 
-        System.out.println("Finished sending post " + post.postName() + " to all groups.");
-
-        if (!skippedGroups.isEmpty()) {
-            System.out.println("Skipped groups: " + String.join(",", skippedGroups));
+            if (currentIndex < groups.size()) {
+                List<String> groupsLeft = groups.subList(currentIndex, groups.size());
+                zooGroupsService.writeGroupsLeft(groupsLeft);
+            }
         }
     }
 
