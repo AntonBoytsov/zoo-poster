@@ -95,7 +95,7 @@ public class PosterService implements Runnable {
                     try {
                         doPost(userActor, post, Integer.parseInt(group));
                         ok = true;
-                    } catch (ApiAuthException | ApiAccessException | ApiPermissionException | ApiCaptchaException e) {
+                    } catch (ApiAuthException | ApiCaptchaException e) {
                         System.out.println("Access denied error while sending post to group " + group + ": " + e.getDescription());
                         userActor = authorizer.getUserActor(vk);
 
