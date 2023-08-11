@@ -39,4 +39,13 @@ public class PostDataProcessor {
         }
     }
 
+    public List<String> getVideoFiles() {
+        String filePath = postDir + "/videos.txt";
+        try {
+            return Files.readAllLines(Paths.get(filePath));
+        } catch (IOException e) {
+            throw new RuntimeException("Error while scanning " + postDir + " for videos: " + e.getMessage(), e);
+        }
+    }
+
 }

@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Component
 public class PosterService implements Runnable {
@@ -53,7 +54,11 @@ public class PosterService implements Runnable {
             throw new RuntimeException("Post " + postName + " images should not be empty");
         }
 
-        String attachment = images.stream().map(i -> processPhoto(userActor, i)).collect(Collectors.joining(","));
+        Stream<String> imageStream = images.stream().map(i -> processPhoto(userActor, i));
+        Stream<String> videoStream = reader.getVideoFiles().stream();
+
+        String attachment = Stream.concat(imageStream, videoStream).collect(Collectors.joining(","));
+
         return new PostData(postName, message, attachment);
     }
 
