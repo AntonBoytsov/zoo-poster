@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -44,7 +45,8 @@ public class PostDataProcessor {
         try {
             return Files.readAllLines(Paths.get(filePath));
         } catch (IOException e) {
-            throw new RuntimeException("Error while scanning " + postDir + " for videos: " + e.getMessage(), e);
+            System.out.println("No video files for the post.");
+            return new ArrayList<>();
         }
     }
 
