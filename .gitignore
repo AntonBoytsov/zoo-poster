@@ -34,3 +34,5 @@ build/
 
 config/posts/
 config/posts_to_send.txt
+
+src/main/resources/application.properties

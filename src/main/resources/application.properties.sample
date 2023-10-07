@@ -1,0 +1,6 @@
+poster.vk.appId=<your_app_id>
+poster.vk.clientSecret=<your_client_secret>
+
+poster.vk.redirectUrl=http://localhost:8085
+poster.vk.permissions=photos,wall,docs,groups
+
